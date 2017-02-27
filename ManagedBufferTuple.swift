@@ -18,26 +18,30 @@ import SwiftShims
 public protocol ManagedBufferTrait {}
 
 /// A trait for instances with a single storage for an array of `Element`.
-public protocol UnitManagedBufferTrait : ManagedBufferTrait {
+public protocol _UnitManagedBufferTrait : ManagedBufferTrait {
   associatedtype Element
 }
 
 /// A trait for instances with a pair of storages of types (`Element1`, `Element2`)
-public protocol PairManagedBufferTrait : ManagedBufferTrait {
+public protocol _PairManagedBufferTrait : ManagedBufferTrait {
   associatedtype Element1
   associatedtype Element2
 
   var count1: Int { get }
+
+  init(count1: Int)
 }
 
 /// A trait for instances with a triple of storages of types (`Element1`, `Element2`, `Element3`)
-public protocol TripleManagedBufferTrait : ManagedBufferTrait {
+public protocol _TripleManagedBufferTrait : ManagedBufferTrait {
   associatedtype Element1
   associatedtype Element2
   associatedtype Element3
 
   var count1: Int { get }
   var count2: Int { get }
+
+  init(count1: Int, count2: Int)
 }
 
 open class ManagedBufferTuple<Header, Trait : ManagedBufferTrait> {
@@ -82,7 +86,7 @@ open class ManagedBufferTuple<Header, Trait : ManagedBufferTrait> {
 }
 
 /// TODO: put some explanations here
-public extension ManagedBufferTuple where Trait : UnitManagedBufferTrait {
+public extension ManagedBufferTuple where Trait : _UnitManagedBufferTrait {
   typealias Element = Trait.Element
   /// The actual number of elements that can be stored in this object.
   ///
@@ -125,10 +129,33 @@ public extension ManagedBufferTuple where Trait : UnitManagedBufferTrait {
     defer { _fixLifetime(self) }
     return try body(headerAddress, firstElementAddress)
   }
+
+  /// Create a new instance of ManagedBufferTuple with Unit trait, calling
+  /// `factory` on the partially-constructed object to generate an initial
+  /// `Header`.
+  public static func create(
+    minimumCapacity: Int,
+    makingHeaderWith factory: (
+      ManagedBufferTuple<Header, Trait>) throws -> Header
+  ) rethrows -> ManagedBufferTuple<Header, Trait> {
+
+    let p = Builtin.allocWithTailElems_1(
+         self,
+         minimumCapacity._builtinWordValue, 
+         Element.self)
+
+    let initHeaderVal = try factory(p)
+    p.headerAddress.initialize(to: initHeaderVal)
+    // The _fixLifetime is not really needed, because p is used afterwards.
+    // But let's be conservative and fix the lifetime after we use the
+    // headerAddress.
+    _fixLifetime(p) 
+    return p
+  }
 }
 
 /// TODO: put some explanation here
-public extension ManagedBufferTuple where Trait : PairManagedBufferTrait {
+public extension ManagedBufferTuple where Trait : _PairManagedBufferTrait {
   typealias Element1 = Trait.Element1
   typealias Element2 = Trait.Element2
   /// The actual number of elements that can be stored in the first buffer.
@@ -193,10 +220,36 @@ public extension ManagedBufferTuple where Trait : PairManagedBufferTrait {
     defer { _fixLifetime(self) }
     return try body(headerAddress, firstBufferAddress, secondBufferAddress)
   }
+
+  /// Create a new instance of ManagedBufferTuple with Pair trait, calling
+  /// `factory` on the partially-constructed object to generate an initial
+  /// `Header`
+  public static func create(
+    minimumCapacity1 capacity1: Int,
+    minimumCapacity2 capacity2: Int,
+    makingHeaderWith factory: (
+      ManagedBufferTuple<Header, Trait>) throws -> Header
+  ) rethrows -> ManagedBufferTuple<Header, Trait> {
+
+    let p = Builtin.allocWithTailElems_2(
+         self,
+         capacity1._builtinWordValue, Element1.self,
+         capacity2._builtinWordValue, Element2.self)
+
+    let trait = Trait(count1: capacity1)
+    p.traitAddress.initialize(to: trait)
+    let initHeaderVal = try factory(p)
+    p.headerAddress.initialize(to: initHeaderVal)
+    // The _fixLifetime is not really needed, because p is used afterwards.
+    // But let's be conservative and fix the lifetime after we use the
+    // headerAddress.
+    _fixLifetime(p) 
+    return p
+  }
 }
 
 /// TODO: put some explanation here
-public extension ManagedBufferTuple where Trait : TripleManagedBufferTrait {
+public extension ManagedBufferTuple where Trait : _TripleManagedBufferTrait {
   typealias Element3 = Trait.Element3
   /// The actual number of elements that can be stored in the first buffer.
   public final var capacity1: Int {
@@ -290,124 +343,72 @@ public extension ManagedBufferTuple where Trait : TripleManagedBufferTrait {
     defer { _fixLifetime(self) }
     return try body(headerAddress, firstBufferAddress, secondBufferAddress, thirdBufferAddress)
   }
+
+  /// Create a new instance of ManagedBufferTuple with Triple trait, calling
+  /// `factory` on the partially-constructed object to generate an initial
+  /// `Header`
+  public static func create(
+    minimumCapacity1 capacity1: Int,
+    minimumCapacity2 capacity2: Int,
+    minimumCapacity3 capacity3: Int,
+    makingHeaderWith factory: (
+      ManagedBufferTuple<Header, Trait>) throws -> Header
+  ) rethrows -> ManagedBufferTuple<Header, Trait> {
+
+    let p = Builtin.allocWithTailElems_3(
+         self,
+         capacity1._builtinWordValue, Element1.self,
+         capacity2._builtinWordValue, Element2.self,
+         capacity3._builtinWordValue, Element3.self)
+
+    let trait = Trait(count1: capacity1, count2: capacity2)
+    p.traitAddress.initialize(to: trait)
+    let initHeaderVal = try factory(p)
+    p.headerAddress.initialize(to: initHeaderVal)
+    // The _fixLifetime is not really needed, because p is used afterwards.
+    // But let's be conservative and fix the lifetime after we use the
+    // headerAddress.
+    _fixLifetime(p) 
+    return p
+  }
 }
 
-public struct _UnitManagedBufferTrait<T> : UnitManagedBufferTrait {
+public struct UnitManagedBufferTrait<T> : _UnitManagedBufferTrait {
   public typealias Element = T
 }
-public struct _PairManagedBufferTrait<A, B> : PairManagedBufferTrait {
+public struct PairManagedBufferTrait<A, B> : _PairManagedBufferTrait {
   public typealias Element1 = A
   public typealias Element2 = B
 
   public let count1: Int
+
+  public init(count1: Int) {
+    self.count1 = count1
+  }
 }
-public struct _TripleManagedBufferTrait<A, B, C> : TripleManagedBufferTrait {
+public struct TripleManagedBufferTrait<A, B, C> : _TripleManagedBufferTrait {
   public typealias Element1 = A
   public typealias Element2 = B
   public typealias Element3 = C
 
   public let count1: Int
   public let count2: Int
-}
 
-public struct ManagedBufferTupleFactory {
-  
-  /// Create a new instance of ManagedBufferTuple with Unit trait, calling
-  /// `factory` on the partially-constructed object to generate an initial
-  /// `Header`.
-  public static func create<Header, Element>(
-    elementsOf type: Element.Type,
-    minimumCapacity: Int,
-    makingHeaderWith factory: (
-      ManagedBufferTuple<Header, _UnitManagedBufferTrait<Element>>) throws -> Header
-  ) rethrows -> ManagedBufferTuple<Header, _UnitManagedBufferTrait<Element>> {
-
-    let p = Builtin.allocWithTailElems_1(
-         ManagedBufferTuple<Header, _UnitManagedBufferTrait<Element>>.self,
-         minimumCapacity._builtinWordValue, Element.self)
-
-    let initHeaderVal = try factory(p)
-    p.headerAddress.initialize(to: initHeaderVal)
-    // The _fixLifetime is not really needed, because p is used afterwards.
-    // But let's be conservative and fix the lifetime after we use the
-    // headerAddress.
-    _fixLifetime(p) 
-    return p
-  }
-
-  /// Create a new instance of ManagedBufferTuple with Pair trait, calling
-  /// `factory` on the partially-constructed object to generate an initial
-  /// `Header`
-  public static func create<Header, Element1, Element2>(
-    elementsOf type1: Element1.Type,
-    minimumCapacity capacity1: Int,
-    elementsOf type2: Element2.Type,
-    minimumCapacity capacity2: Int,
-    makingHeaderWith factory: (
-      ManagedBufferTuple<Header, _PairManagedBufferTrait<Element1, Element2>>) throws -> Header
-  ) rethrows -> ManagedBufferTuple<Header, _PairManagedBufferTrait<Element1, Element2>> {
-
-    let p = Builtin.allocWithTailElems_2(
-         ManagedBufferTuple<Header, _PairManagedBufferTrait<Element1, Element2>>.self,
-         capacity1._builtinWordValue, type1,
-         capacity2._builtinWordValue, type2)
-
-    let trait = _PairManagedBufferTrait<Element1, Element2>(count1: capacity1)
-    p.traitAddress.initialize(to: trait)
-    let initHeaderVal = try factory(p)
-    p.headerAddress.initialize(to: initHeaderVal)
-    // The _fixLifetime is not really needed, because p is used afterwards.
-    // But let's be conservative and fix the lifetime after we use the
-    // headerAddress.
-    _fixLifetime(p) 
-    return p
-  }
-
-  /// Create a new instance of ManagedBufferTuple with Triple trait, calling
-  /// `factory` on the partially-constructed object to generate an initial
-  /// `Header`
-  public static func create<Header, Element1, Element2, Element3>(
-    elementsOf type1: Element1.Type,
-    minimumCapacity capacity1: Int,
-    elementsOf type2: Element2.Type,
-    minimumCapacity capacity2: Int,
-    elementsOf type3: Element3.Type,
-    minimumCapacity capacity3: Int,
-    makingHeaderWith factory: (
-      ManagedBufferTuple<Header, _TripleManagedBufferTrait<Element1, Element2, Element3>>) throws -> Header
-  ) rethrows -> ManagedBufferTuple<Header, _TripleManagedBufferTrait<Element1, Element2, Element3>> {
-
-    let p = Builtin.allocWithTailElems_3(
-         ManagedBufferTuple<Header, _TripleManagedBufferTrait<Element1, Element2, Element3>>.self,
-         capacity1._builtinWordValue, type1,
-         capacity2._builtinWordValue, type2,
-         capacity3._builtinWordValue, type3)
-
-    let trait = _TripleManagedBufferTrait<Element1, Element2, Element3>(count1: capacity1, count2: capacity2)
-    p.traitAddress.initialize(to: trait)
-    let initHeaderVal = try factory(p)
-    p.headerAddress.initialize(to: initHeaderVal)
-    // The _fixLifetime is not really needed, because p is used afterwards.
-    // But let's be conservative and fix the lifetime after we use the
-    // headerAddress.
-    _fixLifetime(p) 
-    return p
-  }
-
-  //===--- internal/private API -------------------------------------------===//
-
-  /// Make ordinary initialization unavailable
-  internal init(_doNotCallMe: ()) {
-    _sanityCheckFailure("Only initialize these by calling create")
+  public init(count1: Int, count2: Int) {
+    self.count1 = count1
+    self.count2 = count2
   }
 }
+
+/// Aliases
+typealias _ManagedBuffer<Header, Element> = ManagedBufferTuple<Header, UnitManagedBufferTrait<String>>
 
 /// Examples
 
 struct MyCustomHeader {
     let capacity: Int
 }
-let buffer = ManagedBufferTupleFactory.create(elementsOf: String.self, minimumCapacity: 32, makingHeaderWith: { b in MyCustomHeader(capacity: b.capacity) })
+let buffer = _ManagedBuffer<MyCustomHeader, String>.create(minimumCapacity: 32, makingHeaderWith: { b in MyCustomHeader(capacity: b.capacity) })
 let buffer2 = ManagedBuffer<MyCustomHeader, String>.create(minimumCapacity: 32, makingHeaderWith: { b in MyCustomHeader(capacity: b.capacity) })
 
 print("cap1: \(buffer.capacity), cap2: \(buffer.header.capacity)")
@@ -419,17 +420,14 @@ print("cap1: \(buffer2.capacity), cap2: \(buffer2.header.capacity)")
 print("size: \(MemoryLayout.size(ofValue: buffer2)), alignment: \(MemoryLayout.alignment(ofValue: buffer2))")
 print("")
 
-var buffer3 = ManagedBufferTupleFactory.create(elementsOf: UInt.self, minimumCapacity: 32, elementsOf: String.self, minimumCapacity: 64, makingHeaderWith: { b in MyCustomHeader(capacity: b.capacity2) })
+var buffer3: ManagedBufferTuple<MyCustomHeader, PairManagedBufferTrait<UInt, String>> = ManagedBufferTuple.create(minimumCapacity1: 32, minimumCapacity2: 64, makingHeaderWith: { b in MyCustomHeader(capacity: b.capacity2) })
 
 print("cap1: \(buffer3.capacity1), cap2: \(buffer3.capacity2), cap3: \(buffer3.header.capacity)")
 print("size: \(MemoryLayout.size(ofValue: buffer3)), alignment: \(MemoryLayout.alignment(ofValue: buffer3))")
 print("trait: \(buffer3.trait), isPod: \(_isPOD(type(of: buffer3.trait)))")
 print("headerAddress: \(buffer3.headerAddress), traitAddress: \(buffer3.traitAddress), buffer: \(UnsafeRawPointer(Builtin.addressof(&buffer3)))")
 
-var buffer4 = ManagedBufferTupleFactory.create(elementsOf: UInt.self, minimumCapacity: 32, 
-                                               elementsOf: String.self, minimumCapacity: 64,
-                                               elementsOf: String.self, minimumCapacity: 32,
-                                               makingHeaderWith: { b in MyCustomHeader(capacity: b.capacity3) })
+var buffer4: ManagedBufferTuple<MyCustomHeader, TripleManagedBufferTrait<UInt, String, String>> = ManagedBufferTuple.create(minimumCapacity1: 32, minimumCapacity2: 64, minimumCapacity3: 32, makingHeaderWith: { b in MyCustomHeader(capacity: b.capacity3) })
 print("cap1: \(buffer4.capacity1), cap2: \(buffer4.capacity2), cap3: \(buffer4.header.capacity)")
 print("size: \(MemoryLayout.size(ofValue: buffer4)), alignment: \(MemoryLayout.alignment(ofValue: buffer4))")
 print("trait: \(buffer4.trait), isPod: \(_isPOD(type(of: buffer4.trait)))")
