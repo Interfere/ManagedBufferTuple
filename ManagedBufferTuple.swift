@@ -18,12 +18,12 @@ import SwiftShims
 public protocol ManagedBufferTrait {}
 
 /// A trait for instances with a single storage for an array of `Element`.
-public protocol _UnitManagedBufferTrait : ManagedBufferTrait {
+public protocol _SingleAreaManagedBufferTrait : ManagedBufferTrait {
   associatedtype Element
 }
 
 /// A trait for instances with a pair of storages of types (`Element1`, `Element2`)
-public protocol _PairManagedBufferTrait : ManagedBufferTrait {
+public protocol _TwoAreasManagedBufferTrait : ManagedBufferTrait {
   associatedtype Element1
   associatedtype Element2
 
@@ -33,7 +33,7 @@ public protocol _PairManagedBufferTrait : ManagedBufferTrait {
 }
 
 /// A trait for instances with a triple of storages of types (`Element1`, `Element2`, `Element3`)
-public protocol _TripleManagedBufferTrait : ManagedBufferTrait {
+public protocol _ThreeAreasManagedBufferTrait : ManagedBufferTrait {
   associatedtype Element1
   associatedtype Element2
   associatedtype Element3
@@ -86,7 +86,7 @@ open class ManagedBufferTuple<Header, Trait : ManagedBufferTrait> {
 }
 
 /// TODO: put some explanations here
-public extension ManagedBufferTuple where Trait : _UnitManagedBufferTrait {
+public extension ManagedBufferTuple where Trait : _SingleAreaManagedBufferTrait {
   typealias Element = Trait.Element
   /// The actual number of elements that can be stored in this object.
   ///
@@ -155,7 +155,7 @@ public extension ManagedBufferTuple where Trait : _UnitManagedBufferTrait {
 }
 
 /// TODO: put some explanation here
-public extension ManagedBufferTuple where Trait : _PairManagedBufferTrait {
+public extension ManagedBufferTuple where Trait : _TwoAreasManagedBufferTrait {
   typealias Element1 = Trait.Element1
   typealias Element2 = Trait.Element2
   /// The actual number of elements that can be stored in the first buffer.
@@ -249,7 +249,7 @@ public extension ManagedBufferTuple where Trait : _PairManagedBufferTrait {
 }
 
 /// TODO: put some explanation here
-public extension ManagedBufferTuple where Trait : _TripleManagedBufferTrait {
+public extension ManagedBufferTuple where Trait : _ThreeAreasManagedBufferTrait {
   typealias Element3 = Trait.Element3
   /// The actual number of elements that can be stored in the first buffer.
   public final var capacity1: Int {
@@ -373,10 +373,10 @@ public extension ManagedBufferTuple where Trait : _TripleManagedBufferTrait {
   }
 }
 
-public struct UnitManagedBufferTrait<T> : _UnitManagedBufferTrait {
+public struct SingleAreaManagedBufferTrait<T> : _SingleAreaManagedBufferTrait {
   public typealias Element = T
 }
-public struct PairManagedBufferTrait<A, B> : _PairManagedBufferTrait {
+public struct TwoAreasManagedBufferTrait<A, B> : _TwoAreasManagedBufferTrait {
   public typealias Element1 = A
   public typealias Element2 = B
 
@@ -386,7 +386,7 @@ public struct PairManagedBufferTrait<A, B> : _PairManagedBufferTrait {
     self.count1 = count1
   }
 }
-public struct TripleManagedBufferTrait<A, B, C> : _TripleManagedBufferTrait {
+public struct ThreeAreasManagedBufferTrait<A, B, C> : _ThreeAreasManagedBufferTrait {
   public typealias Element1 = A
   public typealias Element2 = B
   public typealias Element3 = C
@@ -401,7 +401,7 @@ public struct TripleManagedBufferTrait<A, B, C> : _TripleManagedBufferTrait {
 }
 
 /// Aliases
-typealias _ManagedBuffer<Header, Element> = ManagedBufferTuple<Header, UnitManagedBufferTrait<String>>
+typealias _ManagedBuffer<Header, Element> = ManagedBufferTuple<Header, SingleAreaManagedBufferTrait<String>>
 
 /// Examples
 
@@ -420,14 +420,14 @@ print("cap1: \(buffer2.capacity), cap2: \(buffer2.header.capacity)")
 print("size: \(MemoryLayout.size(ofValue: buffer2)), alignment: \(MemoryLayout.alignment(ofValue: buffer2))")
 print("")
 
-var buffer3: ManagedBufferTuple<MyCustomHeader, PairManagedBufferTrait<UInt, String>> = ManagedBufferTuple.create(minimumCapacity1: 32, minimumCapacity2: 64, makingHeaderWith: { b in MyCustomHeader(capacity: b.capacity2) })
+var buffer3: ManagedBufferTuple<MyCustomHeader, TwoAreasManagedBufferTrait<UInt, String>> = ManagedBufferTuple.create(minimumCapacity1: 32, minimumCapacity2: 64, makingHeaderWith: { b in MyCustomHeader(capacity: b.capacity2) })
 
 print("cap1: \(buffer3.capacity1), cap2: \(buffer3.capacity2), cap3: \(buffer3.header.capacity)")
 print("size: \(MemoryLayout.size(ofValue: buffer3)), alignment: \(MemoryLayout.alignment(ofValue: buffer3))")
 print("trait: \(buffer3.trait), isPod: \(_isPOD(type(of: buffer3.trait)))")
 print("headerAddress: \(buffer3.headerAddress), traitAddress: \(buffer3.traitAddress), buffer: \(UnsafeRawPointer(Builtin.addressof(&buffer3)))")
 
-var buffer4: ManagedBufferTuple<MyCustomHeader, TripleManagedBufferTrait<UInt, String, String>> = ManagedBufferTuple.create(minimumCapacity1: 32, minimumCapacity2: 64, minimumCapacity3: 32, makingHeaderWith: { b in MyCustomHeader(capacity: b.capacity3) })
+var buffer4: ManagedBufferTuple<MyCustomHeader, ThreeAreasManagedBufferTrait<UInt, String, String>> = ManagedBufferTuple.create(minimumCapacity1: 32, minimumCapacity2: 64, minimumCapacity3: 32, makingHeaderWith: { b in MyCustomHeader(capacity: b.capacity3) })
 print("cap1: \(buffer4.capacity1), cap2: \(buffer4.capacity2), cap3: \(buffer4.header.capacity)")
 print("size: \(MemoryLayout.size(ofValue: buffer4)), alignment: \(MemoryLayout.alignment(ofValue: buffer4))")
 print("trait: \(buffer4.trait), isPod: \(_isPOD(type(of: buffer4.trait)))")
