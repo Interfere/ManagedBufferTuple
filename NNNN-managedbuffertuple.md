@@ -8,14 +8,21 @@
 ## Introduction
 
 Some Swift intrinsics (`allocWithTailElems_{n}`) are widely used by Swift standard 
-library to implement tail-allocated buffers, used by containers. Some of those are 
-wrapped by publicly available operators and functions. `ManagedBuffer.create(minimumCapacity:)` 
-class method is just a wrapper around call to allocWithTailElems_1 builtin function. 
-It is possible to implement some containers, like Deque or linked-list using ManagedBuffer, 
-but it is not enough if developer is going to implement advanced data structures 
-like OrderedSet, LRU-cache or something more complex.
+library to implement tail-allocated buffers. Those intrinsics are not available for 
+ordinary developers, but only within standard library. Hence, there is no way to 
+implement custom containers like OrderedSet or LRU-cache.
 
-This proposal outlines a new API for managing tail allocated buffers.
+On the other hand, there is a suitable approach to create and manage single-area 
+tail-allocated buffer. Swift provides a class named `ManagedBuffer`. Actually, 
+class method `ManagedBuffer.create(minimumCapacity:makingHeaderWith:)` is just a 
+wrapper over `allocWithTailElems_1` builtin. You may use that class as a storage 
+for elements of contiguous collection: Array or RingBuffer. Unfortunately, Swift 
+doesn't provde wrappers for `allocWithTailElems_2`, `allocWithTailElems_3` etc. 
+builtins.
+
+This proposal outlines a new API for managing multi-area tail-allocated buffers. 
+It is supposed to extend current implementation of `ManagedBuffer` to support 
+2- and 3-areas tail-allocated buffers.
 
 Swift-evolution thread: [TBD](https://lists.swift.org/pipermail/swift-evolution/)
 
@@ -23,23 +30,27 @@ Swift-evolution thread: [TBD](https://lists.swift.org/pipermail/swift-evolution/
 
 Collections in Swift are implemnted using tail-allocated buffers. A handful of 
 intrinsics are available for developers of swift standard library to allocate and 
-manage data stored in them. For example, the buffer, used by Array, is implemented 
+manage data stored in them. For example, the buffer used by Array is implemented 
 with `allocWithTailElems_1<U>` routine, which is able to allocate contiguous buffer 
 for `N` elements of type `U`. `Set` is implemented with `allocWithTailElems_3<T, U, V>` 
-routine, which is able to allocate contiguous buffer, consisted of three areas for 
+routine, which is able to allocate contiguous buffer consisted of three areas for 
 elements of types `T`, `U` and `V`.
 
-Ordinary developer can't use these instrinsics. He is proposed to use `ManagedBuffer` 
+Ordinary developer can't use these instrinsics. He is supposed to use `ManagedBuffer` 
 instead, which is a simple wrapper over the single-area tail-allocated buffer. It uses 
-`allocWithTailElems_1<U>` to allocate storage for elements of type U the same way the 
-Array container does. Since, ManagedBuffer is a perfect choice for implementing containers 
-based on single-area contiguous buffer, such as Array or Deque, there is no convenient way 
-for implementing complex containers such as OrderedSet or LRU-cache. Instead, developer 
-is forced to do lots of pointer arithmetic and reinvent multiple-area managed buffers.
+`allocWithTailElems_1<U>` to allocate storage for elements of type `U` the same way the 
+Array container does. The class provides a set of methods to create and manage single-area 
+tail-allocated buffer. Subclassing `ManagedBuffer` is the right choice if you are going to 
+implement `RingBuffer` or simple queue.
+
+Yet there is no API to create or manage multi-area tail-allocated buffers in stdlib. Routines 
+`allocWithTailElems_{n}` neither wrapped by `ManagedBuffer_{n}` classes nor exposed to be used 
+by developers. Instead, developers are forced to use `ManagedBuffer` and do lots of pointer 
+arithmetic.
 
 ## Proposed solution
 
-This proposal introduces a new class ManagedBufferTuple and a list of traits for single and 
+This proposal introduces a new class `ManagedBufferTuple` and a list of traits for single and 
 multiple areas cases. The traits are to keep all internal information about structure of the 
 areas.
 
@@ -52,10 +63,6 @@ class TwoAreasManagedBuffer<T, U>: ManagedBufferTuple<CustomHeader, TwoAreasMana
             return CustomHeader(capacity1: buffer.capacity1, capacity2: buffer.capacity2)
         }
         return unsafeDowncast(p, to: self)
-    }
-    
-    private init(_doNotCall: ()) {
-        fatalError()
     }
 }
 
@@ -70,14 +77,6 @@ is simple and minimalistic:
 
 ```swift
 open class ManagedBufferTuple<Header, Trait : ManagedBufferTrait> {
-     
-  fileprivate final var traitAddress: UnsafeMutablePointer<Trait> {
-    return UnsafeMutablePointer<Trait>(Builtin.addressof(&trait))
-  }
-  internal final var headerAddress: UnsafeMutablePointer<Header> {
-    return UnsafeMutablePointer<Header>(Builtin.addressof(&header))
-  }
-
   /// Call `body` with an `UnsafeMutablePointer` to the stored
   /// `Header`.
   ///
@@ -85,9 +84,6 @@ open class ManagedBufferTuple<Header, Trait : ManagedBufferTrait> {
   ///   call to `body`.
   public final func withUnsafeMutablePointerToHeader<R>(
     _ body: (UnsafeMutablePointer<Header>) throws -> R) rethrows -> R
-
-  /// The stored `Trait` instance.
-  fileprivate final var trait: Trait
 
   /// The stored `Header` instance.
   ///
@@ -101,20 +97,14 @@ open class ManagedBufferTuple<Header, Trait : ManagedBufferTrait> {
 
 ```
 
-The class is parametrized with a `Header` and `Trait` types. `Trait` has to conform to 
-abstract `ManagedBufferTrait` type constraint.
-
-```swift
-/// Abstract trait for instances ManagedBufferTuple class.
-public protocol ManagedBufferTrait {}
-```
+The class is parametrized with a `Header` and `Trait` types.
 
 ### Traits
 
 The standard library introduces a handful of traits. Each trait consists of type constraint 
 and corresponding implementation. Type constraint is used for extensions of `ManagedBufferTuple`.
 
-#### Single area trait
+#### Single-area managed buffer trait
 
 ```swift
 /// A trait for instances with a single storage for an array of `Element`.
@@ -127,7 +117,7 @@ public struct SingleAreaManagedBufferTrait<T> : _SingleAreaManagedBufferTrait {
 }
 ```
 
-Extension of ManagedBufferTuple defines interface for single area buffer.
+Extension of `ManagedBufferTuple` defines interface for single area buffer.
 
 ```swift
 public extension ManagedBufferTuple where Trait : _SingleAreaManagedBufferTrait {
@@ -207,7 +197,6 @@ public struct TwoAreasManagedBufferTrait<T, U> : _TwoAreasManagedBufferTrait {
   public typealias Element2 = U
 
   public let count1: Int
-
   public init(count1: Int) {
     self.count1 = count1
   }
@@ -254,7 +243,7 @@ public extension ManagedBufferTuple where Trait : _TwoAreasManagedBufferTrait {
 }
 ```
 
-And corresponding create method with ability to define minimalCapacity for each area:
+And corresponding create method with ability to define minimumCapacity for each area:
 
 ```swift
 public extension ManagedBufferTuple where Trait : _TwoAreasManagedBufferTrait {
@@ -291,7 +280,7 @@ public extension ManagedBufferTuple where Trait : _TwoAreasManagedBufferTrait {
 All multiple areas traits and extensions are similar. In three areas case create method is 
 a wrapper around `allocWithTailElems_3` routine. Source code is omitted.
 
-Traits is a flexible approach. It provides a convenient way of extending tail-allocated 
+Using traits is a flexible approach. It provides a convenient way of extending tail-allocated 
 buffers with a minimal impact on existing code. In future, if there is a need, it would be 
 easy to add more traits to support 4-, 5-areas.
 
@@ -312,5 +301,5 @@ The feature can be added without breaking ABI.
 
 ## Alternatives considered
 
-1. Add `ManagedBuffer2` and `ManagedBuffer3` classes
+1. Add `ManagedBuffer_2` and `ManagedBuffer_3` classes
 2. Make `allocWithTailElems_{n}` routines available for all developers
